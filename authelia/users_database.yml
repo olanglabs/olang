@@ -1,0 +1,21 @@
+users:
+  admin:
+    displayname: 'Administrator'
+    # Password: admin
+    password: '$argon2id$v=19$m=65536,t=3,p=4$ZE1b755Pe/RqsQggSv6bDQ$fpA+2AGjAui1zEWfTwEA9z/7zNaw2IA+ydyf97ZSycs'
+    email: admin@example.com
+    groups: ['admins', 'developers']
+
+  dev:
+    displayname: 'Developer'
+    # Password: dev
+    password: '$argon2id$v=19$m=65536,t=3,p=4$/r8W/2CJ/EJJCI4t/Hl4yg$p+lTgFKxpjCWH9WypmITmE7OQ95Q8OKFB1QYFPW3lNI'
+    email: dev@example.com
+    groups: ['developers']
+
+  user:
+    displayname: 'Regular User'
+    # Password: user
+    password: '$argon2id$v=19$m=65536,t=3,p=4$tQp2uKcyteWj6LcxMciVYw$E8dIqAYHct2XNuSHszsDtWCgbX4TqI5z5keR8XUUa1c'
+    email: user@example.com
+    groups: ['users']

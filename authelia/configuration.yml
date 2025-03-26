@@ -1,0 +1,54 @@
+# Authelia main configuration file
+
+# Generate a secure random JWT secret in practice
+identity_validation:
+  reset_password:
+    jwt_secret: random_secret_that_is_long_enough_for_security
+
+# Log level can be set to debug for troubleshooting
+log:
+  level: info
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml # Use local file for users & passwords
+    password:
+      algorithm: argon2id
+      iterations: 1
+      key_length: 32
+      salt_length: 16
+      memory: 32
+      parallelism: 8
+
+# Define the session cookie and domain for SSO
+session:
+  secret: random_secret_that_is_long_enough_for_security
+  cookies:
+    - domain: app.localhost
+      authelia_url: https://auth.app.localhost
+      default_redirection_url: https://app.localhost
+
+# Storage configuration is required
+storage:
+  encryption_key: random_secret_that_is_long_enough_for_security
+  local:
+    path: /config/db.sqlite3
+
+# Access control rules
+access_control:
+  default_policy: one_factor
+  rules:
+    # Allow Authelia portal itself without login (so users can reach the login page)
+    - domain: auth.app.localhost
+      policy: bypass
+
+    # To sign in as the owner of n8n, we need to perform a workaround.
+    - domain: n8n.app.localhost
+      policy: bypass
+
+# Authelia can send notifications (e.g., OTP emails); we disable or use noop for local.
+notifier:
+  disable_startup_check: true
+  filesystem:
+    filename: /config/notification.txt
+# TLS is not configured here because Caddy will handle TLS termination.

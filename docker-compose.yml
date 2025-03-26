@@ -1,0 +1,215 @@
+services:
+  # Caddy will listen on HTTP/HTTPS and proxy requests to the appropriate service
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    networks:
+      - internal
+    ports:
+      - '80:80' # HTTP
+      - '443:443' # HTTPS (Caddy will use a local CA for self-signed certs)
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/root.crt:/data/caddy/pki/authorities/local/root.crt:ro
+      - ./caddy/root.key:/data/caddy/pki/authorities/local/root.key:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - CADDY_TELEMETRY=off
+      # HTTP
+      - HTTP_PROTOCOL=https://
+      # Domains
+      - AUTHELIA_DOMAIN=${AUTHELIA_DOMAIN}
+      - NEXTJS_DOMAIN=${NEXTJS_DOMAIN}
+      - OPENWEBUI_DOMAIN=${OPENWEBUI_DOMAIN}
+      - N8N_DOMAIN=${N8N_DOMAIN}
+      - SUPABASE_STUDIO_DOMAIN=${SUPABASE_STUDIO_DOMAIN}
+      - SUPABASE_META_DOMAIN=${SUPABASE_META_DOMAIN}
+      - LANGFLOW_DOMAIN=${LANGFLOW_DOMAIN}
+
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nextjs
+    networks:
+      - internal
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development # Set to production
+      - PORT=8080
+      # HTTP
+      - NEXT_PUBLIC_HTTP_PROTOCOL=https://
+      # Domains
+      - NEXT_PUBLIC_OPENWEBUI_DOMAIN=${OPENWEBUI_DOMAIN}
+      - NEXT_PUBLIC_N8N_DOMAIN=${N8N_DOMAIN}
+      - NEXT_PUBLIC_SUPABASE_STUDIO_DOMAIN=${SUPABASE_STUDIO_DOMAIN}
+      - NEXT_PUBLIC_LANGFLOW_DOMAIN=${LANGFLOW_DOMAIN}
+      # Features
+      - NEXT_PUBLIC_ENABLE_AUDIT_LOGS=${ENABLE_AUDIT_LOGS}
+
+  # Authelia SSO server, running in 'Trusted Headers' mode behind Caddy
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      - ./authelia/users_database.yml:/config/users_database.yml:ro
+      - authelia_data:/data:rw
+      - authelia_config:/config:rw
+    networks:
+      - internal
+    environment:
+      # See: https://www.authelia.com/configuration/methods/environment/
+      - AUTHELIA_SERVER_ADDRESS=0.0.0.0:8080
+      - AUTHELIA_THEME=dark
+      # - JWT_SECRET=${AUTHELIA_JWT_SECRET}
+      # - SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+      # - STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+      # - DEFAULT_REDIRECTION_URL=${NEXTJS_DOMAIN}
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: openwebui
+    networks:
+      - internal
+    volumes:
+      - ./openwebui/loader.js:/app/build/static/loader.js:ro
+      - ./.data/openwebui:/app/backend/data:rw
+    environment:
+      # See: https://docs.openwebui.com/getting-started/env-configuration/
+      - ENV=prod
+      - PORT=8080
+      # - WEBUI_NAME=OpenWebUI
+      - ENABLE_CHANNELS=true
+      - SHOW_ADMIN_DETAILS=false
+      - ENABLE_OLLAMA_API=false
+      # TODO: Disable OpenAI API
+      # - ENABLE_OPENAI_API=false
+      - ENABLE_EVALUATION_ARENA_MODELS=false
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_API_KEY_ENDPOINT_RESTRICTIONS=true
+      - BYPASS_MODEL_ACCESS_CONTROL=true
+      # Configure OpenWebUI to trust authentication headers from Authelia
+      # (When Caddy passes these headers, OpenWebUI will auto-login the user)
+      - CORS_ALLOW_ORIGIN=https://${NEXTJS_DOMAIN}
+      - WEBUI_AUTH_TRUSTED_EMAIL_HEADER=Remote-Email
+      - WEBUI_AUTH_TRUSTED_NAME_HEADER=Remote-Name
+      # ---
+      - MAX_BODY_LOG_SIZE=1073741824 # 1 GB
+      # Enable OpenRouter / OpenAI API temporary
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URL=${AI_MODEL_API_BASE_URL}
+      - OPENAI_API_KEY=${AI_MODEL_API_KEY}
+      # Features
+      - ENABLE_AUDIT_LOGS=${ENABLE_AUDIT_LOGS}
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    networks:
+      - internal
+    volumes:
+      - ./n8n/hooks.js:/home/node/.n8n/hooks.js:ro
+      - n8n_data:/home/node/.n8n:rw
+    environment:
+      - N8N_PORT=8080
+      # Disable built-in basic auth / login, and use external hook to trust Authelia
+      - EXTERNAL_HOOK_FILES=/home/node/.n8n/hooks.js
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_FORWARD_AUTH_HEADER=Remote-Email
+      - N8N_LOG_LEVEL=debug
+      # (The external hook will check for Remote-Email header and auto-issue a session token for that user)
+
+  postgres:
+    image: supabase/postgres:15.8.1.054
+    container_name: supabase_postgres
+    networks:
+      - internal
+    ports:
+      - '5432:5432'
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:rw
+
+  supabase-meta:
+    image: supabase/postgres-meta:v0.86.1
+    container_name: supabase_meta
+    networks:
+      - internal
+    environment:
+      - PG_META_PORT=8080
+      # Postgres
+      - PG_META_DB_HOST=${POSTGRES_HOST}
+      - PG_META_DB_PORT=${POSTGRES_PORT}
+      - PG_META_DB_NAME=${POSTGRES_DB}
+      - PG_META_DB_USER=${POSTGRES_USER}
+      - PG_META_DB_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+
+  supabase-studio:
+    image: supabase/studio:latest
+    container_name: supabase_studio
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    environment:
+      - PORT=8080
+      - STUDIO_DEFAULT_ORGANIZATION_NAME=${ORGANIZATION_NAME}
+      - STUDIO_DEFAULT_PROJECT_NAME=${PROJECT_NAME}
+      # Supabase
+      - SUPABASE_URL=http://supabase_studio:8080
+      - SUPABASE_PUBLIC_URL=https://${SUPABASE_STUDIO_DOMAIN}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      # Supabase Meta
+      - STUDIO_PG_META_URL=http://supabase_meta:8080
+      # Postgres
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - supabase-meta
+
+  langflow:
+    image: langflowai/langflow:latest
+    container_name: langflow
+    networks:
+      - internal
+    volumes:
+      - langflow_data:/langflow_data:rw
+    environment:
+      - LANGFLOW_AUTO_LOGIN=true
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=8080
+      - LANGFLOW_STORE=false
+      - LANGFLOW_STORE_ENVIRONMENT_VARIABLES=false
+      # Disable telemetry
+      - DO_NOT_TRACK=true
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  langflow_data:
+  caddy_data:
+  caddy_config:
+  authelia_data:
+  authelia_config:
+  n8n_data:

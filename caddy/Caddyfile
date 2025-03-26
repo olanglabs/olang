@@ -1,0 +1,80 @@
+{$AUTHELIA_DOMAIN} {
+    reverse_proxy authelia:8080
+}
+
+{$NEXTJS_DOMAIN} {
+    reverse_proxy nextjs:8080
+
+    forward_auth authelia:8080 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Name Remote-Email Remote-Groups
+    }
+}
+
+{$OPENWEBUI_DOMAIN} {
+    reverse_proxy openwebui:8080 {
+        header_down X-Frame-Options "SAMEORIGIN"
+        header_down Content-Security-Policy "frame-ancestors 'self' {$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Origin "{$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Methods "*"
+        header_down Access-Control-Allow-Headers "*"
+        header_down Access-Control-Allow-Credentials "true"
+    }
+
+    forward_auth authelia:8080 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Name Remote-Email Remote-Groups
+    }
+}
+
+{$N8N_DOMAIN} {
+    reverse_proxy n8n:8080 {
+        header_down X-Frame-Options "SAMEORIGIN"
+        header_down Content-Security-Policy "frame-ancestors 'self' {$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Origin "{$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Methods "*"
+        header_down Access-Control-Allow-Headers "*"
+        header_down Access-Control-Allow-Credentials "true"
+    }
+
+    forward_auth authelia:8080 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Name Remote-Email Remote-Groups
+    }
+}
+
+{$SUPABASE_STUDIO_DOMAIN} {
+    reverse_proxy supabase_studio:8080 {
+        header_down X-Frame-Options "SAMEORIGIN"
+        header_down Content-Security-Policy "frame-ancestors 'self' {$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Origin "{$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Methods "*"
+        header_down Access-Control-Allow-Headers "*"
+        header_down Access-Control-Allow-Credentials "true"
+    }
+    
+    forward_auth authelia:8080 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Name Remote-Email Remote-Groups
+    }
+}
+
+{$SUPABASE_META_DOMAIN} {
+    reverse_proxy supabase_meta:8080
+}
+
+{$LANGFLOW_DOMAIN} {
+    reverse_proxy langflow:8080 {
+        header_down X-Frame-Options "SAMEORIGIN"
+        header_down Content-Security-Policy "frame-ancestors 'self' {$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Origin "{$HTTP_PROTOCOL}{$NEXTJS_DOMAIN}"
+        header_down Access-Control-Allow-Methods "*"
+        header_down Access-Control-Allow-Headers "*"
+        header_down Access-Control-Allow-Credentials "true"
+    }
+
+    forward_auth authelia:8080 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Name Remote-Email Remote-Groups
+    }
+} 
